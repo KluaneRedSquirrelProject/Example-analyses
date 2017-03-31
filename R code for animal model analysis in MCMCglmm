@@ -1,0 +1,80 @@
+require(krsp)
+require(MCMCglmm)
+require(MasterBayes)
+require(tidyverse)
+require(lubridate)
+
+select = dplyr::select #necessary as MASS also has a select function
+
+#Connecting to and drawing tables from database####
+
+#This assumes you have set up a "my.cnf" fle in your C. dirve (or where ever it is for Macs) following Andrew's earlier guide
+con = krsp_connect(group = "krsp-aws")
+
+
+litters = tbl(con, "litter") %>%
+  filter(ln ==1 & grid %in% c("SU", "KL")) %>%
+  select(squirrel_id, year=yr, p_date=fieldBDate, grid,  litter_x=locx, litter_y=locy) %>%
+  collect() %>% 
+  mutate(part_date=yday(ymd(p_date)),
+         squirrel_id=factor(squirrel_id),
+         animal=factor(squirrel_id),#we create a vector called "animal" as this is a reserved word in MCMCglmm specifically for linking with a pedigree
+         year.f=factor(year),
+         litter_x=loc_to_numeric(litter_x),
+         litter_y=loc_to_numeric(litter_y)) 
+
+ped=tbl(con, "pedigree") %>%
+  select(animal=squirrel_id, sire=sire_id, dam=dam_id) %>%
+  filter(!(is.na(animal))) %>%
+  group_by(animal) %>% collect() %>%
+  filter(row_number() == 1) %>% ungroup()
+#Note we haven't bothered filtering this beyond ensuring each "animal" only appears once,
+#as the pedigree can contain many more animals than the phenotype data without any problems
+
+ped=as.data.frame(ped)
+
+ped=orderPed(ped) 
+
+#We do need to make sure there are no squirrels in the phenotpye data that don't appear in the pedigree
+#I also convert it into a data.frame here, and so don't use the pipes to filter
+litters=as.data.frame(litters[litters$animal %in% ped$animal,])
+
+#Animal model in MCMCglmm####
+
+#Set prior
+#We will have 3 random effects: the pedigree, year and squirrel ID, as we have multiple measures on squirrels
+
+#First we must set a prior
+#Light intro to priors here: https://www.countbayesie.com/blog/2015/2/18/hans-solo-and-bayesian-priors
+
+prior1 <- list(G = list(G1 = list(V = 1, nu = 0.002),
+                        G2 = list(V = 1, nu = 0.002),
+                        G3 = list(V = 1, nu = 0.002)),
+               #Then a single term for the residual variance
+               R = list(V = 1, nu = 0.002))
+#Essentially if we have no prior information for the expected pattern, we want to simply set this as the correct structure and to be uninformative
+
+animal.model <- MCMCglmm(part_date ~ grid + year , #year as a continuous term
+                    random = ~animal + year.f + squirrel_id , #year as a factor
+                     pedigree = ped, family="poisson",
+                     data = litters, prior = prior1, verbose=F,
+                     nitt=15000,burnin=5000,thin=10)
+#nitt = number of iterations, 
+#burnin = number of these iterations than are initially discared while model is moving through parameter space
+#thin = 1/n of the remaining iterations are kept to calculate the posterior distribution
+
+summary(animal.model)
+
+plot(animal.model)
+#we want convergence plots that are thick and fuzzy but not going up or down. Ideally smooth density plots
+#Increase nitt if this has not happened yet.
+
+posterior.mode(animal.model$VCV) #Modes (most appropriate number, as it is the peak of the histogram) for variance components
+
+#Heritability is additive genetic variance (animal term) divided by total phenotypic variance (all random effects)
+#Note we are not including year here, as we did not calculate parturition dates relative to the yearly average
+#Therefore we do not include this source of variation in the total phenotypic variance
+herit=animal.model$VCV[,1] / (animal.model$VCV[,1] + animal.model$VCV[,3]+ animal.model$VCV[,4])
+
+hist(herit)
+posterior.mode(herit)
