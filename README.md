@@ -1,2 +1,4 @@
-# Example-animal-model-analysis
-A short example showing how to draw data from the database and then enter it into an animal model in MCMCglmm to estimate the additive genetic variance (in parturition date in this case)
+# Example-analyses
+Short examples showing how to conduct a particular analysis
+
+Each file should outline how to draw some basic daa from the online data base, and then use  it in an analysis that others may be interested in conducting
