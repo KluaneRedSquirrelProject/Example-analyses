@@ -1,0 +1,65 @@
+#Code for calculating activity and aggression scores
+#Motivation: This code enables the user to calculate the activity and aggression scores from the personality file 
+#Last modified on December 15, 2019 by April Robin Martinig 
+
+#Required packages
+library(dplyr)
+library(tidyverse)
+library(lubridate)
+
+#load data
+#change this to where you keep your copy of the data
+data<-read.table("/Users/april-martinig/Documents/Files/PhD/Data Analysis/Boris/trial.txt", header=T) 
+
+#converting the raw scores
+data<-data %>%
+	mutate(walk=(walk/450), 
+	jump=(jump/450), 
+	hole=(hole/450), 
+	hang=(hang/450), 
+	chew=(chew/450), 
+	groom=(groom/450), 
+	still=(still/450), 
+	front=(front/300), 
+	back=(back/300), 
+	attack=(attack/300), 
+	attacklatency=(attacklatency/300), 
+	approachlatency=(approachlatency/300))
+	
+summary(data)
+#NA's for squirrels that are not from A. R. Martinig's study are NULL's (i.e. the observer did not record/enter in any info for that squirrel, hence observations are missing)
+
+data<- data %>%
+	mutate_all(funs(replace(., is.na(.), 1.0))) #makes all NA's 1.0 
+	#this is required for juveniles from A. R. Martinig's study
+	#these juveniles did not look at themselves in the mirror and based on A. R. Martinig's work, they need to be scored this way
+
+#restrict the data to whichever age class and cohort you want to work with
+#if you want to calculate scores for multiple age classes, make sure to make separate files for each age class
+OFT<-data %>%
+	filter(ageclass %in% c("J"), cohort %in% c("2017", "2018"), !trialnumber %in% c("1a", "1b")) %>% #to keep only the juveniles in 2017 and 2018, remove trials that are labelled differently (1a and 1b)
+	droplevels()
+
+### script for running PCA on select columns from data set
+###need to check that you use the right set of behaviours, and that they are formatted as was done previously
+##e.g., proportion of time, counts, yes/no, etc.
+OFT_j<-prcomp(OFT[c(17,18,19,20,21,22,23)], center=TRUE, scale =TRUE) #says which columns are from the OFT trial
+summary(OFT_j) #gives loading for prinicpal components
+OFT_j #shows how each behaviour is weighted
+
+###script for adding PC1 column of OFT to data table
+OFT$OFT1<-prcomp(~walk +jump+ hole + hang +chew +groom + still, data=OFT, center=TRUE, scale =TRUE)$x[,1]
+
+#aggression trials
+#NAs are given maximum value
+MIS_max_j<-prcomp(OFT[c(24,25,26,27,28)], center=TRUE, scale =TRUE) #says which columns are from the MIS trial
+summary(MIS_max_j) #gives loading for prinicpal components
+MIS_max_j #shows how each behaviour is weighted
+
+###script for adding PC1 column of MIS to data table
+OFT$MIS1<-prcomp(~front + back + attack + attacklatency + approachlatency, data=OFT, center=TRUE, scale =TRUE)$x[,1]
+
+#if you are interested in calculating the coefficient of variation (i.e., predictability), here is the code for this:
+CV <- function(x){
+        (sd(x)/mean(x))
+}
