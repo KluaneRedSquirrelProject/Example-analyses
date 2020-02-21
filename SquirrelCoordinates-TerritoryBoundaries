@@ -1,0 +1,47 @@
+---
+title: "Squordinates"
+author: "AEW"
+date: '2019-03-24'
+output: pdf_document
+---
+This Squordinates code (Squirrel Coordinates) reads in individual GPX files, i.e., "territory tracks", obtained by walking the boundaries of a defended squirrel territory with a Garmin GPS handheld unit, following Territory Boundaries protocol. Briefly, territorial behaviours are mapped for individual squirrels (can use AEW's TerritoryMapping.md code in the field to map and scale behaviours for individual squirrels), maps are printed, and the defended borders are walked by the squirreler *SLOWLY* ensuring good GPS signal and resolution, and then saving the track with the date, grid, reflo, and squirrel ID in the filename on the GPS unit. These GPX files are then uploaded to a computer using the GPS-USB cable and read into R using the code below. Territory boundaries are typically mapped in the fall (September-October) once squirrels have settled. 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##Load Packages
+```{r setup, include=FALSE}
+library(tidyverse)
+library(here)
+library(sf)
+library(ggmap)
+library(lubridate)
+library(adehabitatHR)
+library(plotKML)
+library(rgdal)
+```
+##23263_2017
+## Each chunk is named with the squirrel ID and year (as a given squirrel can be tracked multiple years). 
+```{r setup, include=FALSE}
+track23263_2017 <- readGPX("Track_2017-09-27_LL_-3.0_23263.gpx", metadata = TRUE, bounds = TRUE, waypoints = TRUE, tracks = TRUE, routes = TRUE)
+#Now look at the Environment tab (if using R Studio). The object just named trackXXXXX_20XX should be a List of 5, with tracks containing a List of 1. Under tracks, you will see after the $ information from the filename, in this case, "2017-09-27 LL -3.0" followed by ":'data.frame':....". You may need to copy the first bit after the dollar sign and past it into the next line of code if it is in a different format:
+
+sq23263_2017 <- track23263_2017$tracks[[1]][["2017-09-27 LL -3.0"]] #here we are creating a new dataframe from the Tracks contained within the GPX file. 
+sq23263_2017$squirrel_id <- "23263" #create a column for squirrel_id
+sq23263_2017$year <- "2017" #create a column for year
+sq23263_2017$gr <- "LL" #create a column for grid 
+sq23263_2017$reflo <- "-3.0" #create a column for reflo
+
+#Your new dataframe should contain X obs (dependent on how many GPS points the unit picked up in the field) of 8 variables.
+write.csv(sq23263_2017, "sq23263_2017.csv") #write the data as its own CSV file.
+```
+#These chunks are repeated for each GPX file in your folder. There is probably a way to loop these...
+
+###Bind 2017 data into a single dataframe
+```{r}
+squordinates2017 <- rbind(sq23302_2017, 
+      sq23306_2017) #include all your squirrel-year dataframes here
+
+squordinates2017 <- unite_(squordinates2017, "sqyear", c("squirrel_id", "year")) 
+write.csv(squordinates2017, "squordinates2017.csv") #where "sqyear" concatenates squirrel ID and year
+```
