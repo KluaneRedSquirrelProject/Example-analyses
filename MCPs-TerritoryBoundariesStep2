@@ -1,0 +1,135 @@
+---
+title: "Territory Boundaries"
+author: "AEW"
+date: '2019-03-19'
+output: pdf_document
+---
+This code produces minimum convex polygon (MCP) territories from GPS coordinates. It reads in the GPS coordinates of territory boundaries (obtained by following Territory Boundary 2017 protocols making use of AEW's TerritoryMapping.md code to map behaviours, then physically traced in the field with Garmin handheld GPS units. Resulting GPX files are uploaded and processed by AEW's Squordinates.md code which produces the squordinates data loaded in here). Baseline code provided by Clayton Lamb, modified here by AEW, last updated 2020-02-20. 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+##Load Packages
+```{r}
+library(tidyverse)
+library(here)
+library(sf)
+library(ggmap)
+library(lubridate)
+library(adehabitatHR)
+library(plotKML)
+library(rgdal)
+library(leaflet)
+```
+#Load Data
+```{r}
+#sub in the correct filename for the grid/year of interest - make sure to change the write.csv filename at the end of this Rmd file
+squord <- read.csv("squordinates2017.csv")
+
+```
+
+### Make Spatial
+
+```{r}
+squord <- st_as_sf(squord, 
+                  coords = c("lon","lat"),
+                  crs = "+init=epsg:4326 +proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0") #Convert coordinates to sf spatial object
+
+squord <- sf:::as_Spatial(squord)
+
+
+# User defined input. Modify line below to chose the correct parameters.
+output.projection ="+proj=utm +zone=14 +datum=NAD83"
+
+squordarea <- spTransform(squord, CRS(output.projection))
+
+```
+
+
+
+### Create MCP to visualize using Leaflet
+
+```{r}
+##sqyear is the unique animal-year ID column
+cp1 <- mcp(squord[,"sqyear"], percent=100, unin = "m", unout="ha")
+
+
+plot(cp1)
+##make into a data frame
+mcp1 <- cp1%>%as_tibble()
+
+#Plot home range size against percent home range. Because we are using tracks obtained by walking territory boundaries, we can see that we would need 100% MCPs to capture all the datapoints. If we were using relocation data, it may be sufficient to use a lower percent. 
+mcparea <- mcp.area(squordarea, percent = seq(20,100, by = 10),
+         unin = c("m"), #unit in --> metres
+         unout = c("ha"), plotit = TRUE) # unit out --> hectares
+
+#Visualize
+squorddf <- as.data.frame(squordarea)
+g <- ggplot(cp1, aes(x = long, y = lat, fill = id, group = group)) +
+            geom_polygon(alpha = .4) +
+            ggthemes::scale_fill_gdocs() +
+            coord_equal() +
+            theme_void()
+g
+g + facet_wrap(~id)
+
+#Leaflet to visualize MCPs on a map 
+
+ leaflet(cp1) %>% addTiles() %>%
+  addPolygons()
+
+```
+
+
+### Create MCP to get areas in hectares
+
+```{r}
+
+cp2 <- mcp(squordarea[,"sqyear"], percent=100, unin = "m", unout="ha")
+
+
+plot(cp2)
+##make into a data frame
+mcp2 <- cp2%>%as_tibble()
+
+mcparea <- mcp.area(squordarea, percent = seq(20,100, by = 1),
+         unin = c("m"),
+         unout = c("ha"), plotit = TRUE)
+
+write.csv(cp2, "mcp_ha-2017-LL.csv")
+
+writeOGR(cp2, dsn = '.', layer = 'cp2', driver = "ESRI Shapefile")
+writePolyShape(cp2, "mcp_ha-2017-LL.shp")
+```
+
+####
+##Join CSVs across grids/years if necessary
+#####
+```{r}
+ll2017 <- read.csv("mcp_ha-2017-LL.csv") #Read in MCPs for each grid
+llagkl2018 <- read.csv("mcp_ha-2018-LLAGKL.csv")
+
+tracks <- rbind(ll2017, llagkl2018) #Bind all to create a new dataframe 
+tracks$X <- NULL
+
+
+data_split<- strsplit(as.character(tracks$id), split="_")
+tracks <- transform(tracks, squirrel_id= sapply(data_split, "[[", 1), year = sapply(data_split, "[[", 2))
+
+write.csv(tracks, "mcpall.csv")
+
+```
+
+
+
+##Exploratory stats
+
+```{r}
+ 
+tapply(tracks$area, tracks$year, mean)#average territory size in hectares in each year
+
+boxplot(tracks$area ~ tracks$year)
+
+
+```
