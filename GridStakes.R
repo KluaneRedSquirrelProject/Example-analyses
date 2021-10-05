@@ -16,7 +16,8 @@ con_suppl <- krsp_connect (host = "krsp.cepb5cjvqban.us-east-2.rds.amazonaws.com
 #####################################
 grid_stakes<-tbl(con_suppl, "grid_stakes") %>% 
   filter(!is.na(north),
-         !is.na(west))
+         !is.na(west)) %>% 
+  collect()
 
 # Convert to spatial coordinates
 cord.dec = SpatialPoints(cbind(-grid_stakes$west, grid_stakes$north), proj4string=CRS("+proj=longlat"))
