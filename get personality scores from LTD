@@ -1,64 +1,154 @@
-#Code for calculating activity and aggression scores
-#Motivation: This code enables the user to calculate the activity and aggression scores from the personality file 
-#Last modified on December 15, 2019 by April Robin Martinig 
+#Code for generating the PCA scores from the assays
+#using all assays and then showing how the user can subset for the dataset they need
 
-#Required packages
-library(dplyr)
-library(tidyverse)
-library(lubridate)
+#Motivation: This code enables the user to calculate the "activity" and "aggression" scores from the personality LTD 
+
+#Last modified on March 24, 2022 by April Robin Martinig 
+
+#Delete previous information stored 
+rm(list=ls(all=T))
+
+##set wd to the folder with all your csv's in it
+#change this to where you keep your copy of the data
+setwd("~/Documents/Files/Manuscripts/Martinig et al. 2022/Data analysis")
+
+#set some work session specific preferences
+options(scipen=999, dplyr.width = Inf, tibble.print_min = 50, digits=8, repos='http://cran.rstudio.com/', dplyr.summarise.inform = FALSE) 
+#scipen forces outputs to not be in scientific notation 
+#dplyr.width will show all columns for head() function 
+#tibble.print_min sets how many rows are printed 
+#repos sets the cran mirror
+#dplyr.summarise.inform suppresses a specific message about how summarize() ungroups output
+
+#efficient (and automated) way to load and isntall packages
+packages=c("dplyr", "tidyverse", "lubridate")
+
+# Install packages not yet installed
+installed_packages <- packages %in% rownames(installed.packages())
+if (any(installed_packages == FALSE)) {
+  install.packages(packages[!installed_packages])
+}
+
+#if you need to update packages, run this line too
+#update.packages(ask = FALSE)
+
+# Packages loading
+lapply(packages, library, character.only = TRUE)
+
 
 #load data
 #change this to where you keep your copy of the data
-data<-read.table("/Users/april-martinig/Documents/Files/PhD/Data Analysis/Boris/trial.txt", header=T) 
+raw_data<-read.csv("Trials.csv", header=T, na.strings=c(""," ","NA")) 
+
 
 #converting the raw scores
-data<-data %>%
-	mutate(walk=(walk/450), 
-	jump=(jump/450), 
-	hole=(hole/450), 
-	hang=(hang/450), 
-	chew=(chew/450), 
-	groom=(groom/450), 
-	still=(still/450), 
-	front=(front/300), 
-	back=(back/300), 
-	attack=(attack/300), 
-	attacklatency=(attacklatency/300), 
-	approachlatency=(approachlatency/300))
+assays<-raw_data %>%
+    	mutate_if(is.character, as.factor) %>% #make all the character variables factors
+	mutate(
+		trialdate=lubridate::ymd(trialdate),
+		videodate=lubridate::ymd(videodate),
+		trialtime=lubridate::hms(trialtime),
+		walk=(walk/450), 
+		jump=(jump/450), 
+		hole=(hole/450), 
+		hang=(hang/450), 
+		chew=(chew/450), 
+		groom=(groom/450), 
+		still=(still/450), 
+		front=(front/300), 
+		back=(back/300), 
+		attack=(attack/300), 
+		attacklatency=(attacklatency/300), 
+		approachlatency=(approachlatency/300)) %>%	
+	dplyr::filter(
+		!trialnumber %in% c("1a", "1b"), #remove trials that are labelled differently (1a and 1b) - these trials are a holdover and should not be kept
+		!Exclude_unless_video_reanalyzed=="Y", #exclude these videos because they have not been reanalysed yet
+		!is.na(sq_id), 
+		!observer=="SWK", #squirrels analysed by SWK are part of a hormone-add experiment and should be excluded before running any analyses using non-manipulated squirrels
+		hang<=1, 
+		chew<=1, 
+		still<=1, 
+		front<=1, 
+		back<=1, 
+		attack<=0.96, #filtering out attacks >0.96 because numerous squirrels have 288-294 attacks, which are impossible to get in 300 seconds 
+	#only excludes 2 squirrels from our n=88 dataset, the first (10265) had 294 attacks and a jump rate that was an outlier AND had decimals (which is impossible for a count behaviour!) and the second (10342) had 288 attacks
+	#this leaves squirrels with <=252 attacks (which also should be investigated)
+		attacklatency<=1, 
+		approachlatency<=1,
+		!is.na(walk), !is.na(jump), !is.na(hole), !is.na(hang), !is.na(chew), !is.na(groom), !is.na(still), !is.na(front), !is.na(back), !is.na(attack), !is.na(attacklatency), !is.na(approachlatency) #remove all rows with NAs - these records are either incomplete or have errors and need to be excluded from analyses going in publications
+		) %>% 
+	droplevels() 
+
+#NOTE: there are "warning messages" because of NAs for records from the old squirrel data - these NAs happen because observers did not record things such as observer software, video date (when the video was scored), trial time, midden, and colours, collar, etc. 
+
+summary(assays)
+
+(assays) %>% as_tibble() %>% count(sq_id) %>% nrow() #662 individuals
+nrow(assays) #942 assays	
 	
-summary(data)
-#NA's for squirrels that are not from A. R. Martinig's study are NULL's (i.e. the observer did not record/enter in any info for that squirrel, hence observations are missing)
 
-data<- data %>%
-	mutate_all(funs(replace(., is.na(.), 1.0))) #makes all NA's 1.0 
-	#this is required for juveniles from A. R. Martinig's study
-	#these juveniles did not look at themselves in the mirror and based on A. R. Martinig's work, they need to be scored this way
-
-#restrict the data to whichever age class and cohort you want to work with
+#Before moving on to do more analyses, be sure to restrict the data to whichever age class and cohort(s) you want to work with
 #if you want to calculate scores for multiple age classes, make sure to make separate files for each age class
-OFT<-data %>%
-	filter(ageclass %in% c("J"), cohort %in% c("2017", "2018"), !trialnumber %in% c("1a", "1b")) %>% #to keep only the juveniles in 2017 and 2018, remove trials that are labelled differently (1a and 1b)
+
+##########################################################
+#here is an example just for juveniles from 2017 and 2018
+##########################################################
+
+assay_subset<-assays %>%
+	filter(ageclass %in% c("J"), cohort %in% c("2017", "2018")) %>% 
 	droplevels()
 
 ### script for running PCA on select columns from data set
-###need to check that you use the right set of behaviours, and that they are formatted as was done previously
-##e.g., proportion of time, counts, yes/no, etc.
-OFT_j<-prcomp(OFT[c(17,18,19,20,21,22,23)], center=TRUE, scale =TRUE) #says which columns are from the OFT trial
+
+##########################################################
+#pulling out the PCs for the OFT part of assays
+##########################################################
+
+OFT_j<-prcomp(assay_subset[c("walk", "jump", "hole", "hang", "chew", "groom", "still")], center=TRUE, scale =TRUE) #says which columns are from the OFT trial
 summary(OFT_j) #gives loading for prinicpal components
 OFT_j #shows how each behaviour is weighted
 
-###script for adding PC1 column of OFT to data table
-OFT$OFT1<-prcomp(~walk +jump+ hole + hang +chew +groom + still, data=OFT, center=TRUE, scale =TRUE)$x[,1]
+#note that using a correlation matrix doesn't change anything :)
+#OFT_j<-princomp(assay_subset[c("walk", "jump", "hole", "hang", "chew", "groom", "still")], cor =TRUE)
+#summary(OFT_j)
+#OFT_j
+#print(loadings(OFT_j), cutoff=0)
 
-#aggression trials
-#NAs are given maximum value
-MIS_max_j<-prcomp(OFT[c(24,25,26,27,28)], center=TRUE, scale =TRUE) #says which columns are from the MIS trial
+##########################################################
+#NOTE: when you look at OFT_j, if walk is NEGATIVE, you need to make sure to multiply the prcomp BELOW by -1 to make sure that higher PC1 values mean more activity, not less
+##########################################################
+
+###script for adding PC1 column of OFT to data table
+assay_subset$OFT1<-(-1)*prcomp(~walk +jump+ hole + hang +chew +groom + still, data= assay_subset, center=TRUE, scale =TRUE)$x[,1]
+
+
+
+##########################################################
+#pulling out the PCs for the OFT part of assays
+##########################################################
+
+#how to pull out PCs for MIS part of assays
+MIS_max_j<-prcomp(assay_subset[c("front", "back", "attack", "attacklatency", "approachlatency")], center=TRUE, scale =TRUE) #says which columns are from the MIS trial
 summary(MIS_max_j) #gives loading for prinicpal components
 MIS_max_j #shows how each behaviour is weighted
 
-###script for adding PC1 column of MIS to data table
-OFT$MIS1<-prcomp(~front + back + attack + attacklatency + approachlatency, data=OFT, center=TRUE, scale =TRUE)$x[,1]
+#note that using a correlation matrix doesn't change anything :)
+#MIS_max_j <-princomp(assay_subset[c("front", "back", "attack", "attacklatency", "approachlatency")], cor =TRUE)
+#summary(MIS_max_j)
+#MIS_max_j
+#print(loadings(MIS_max_j), cutoff=0)
 
+##########################################################
+# NOTE: when you look at MIS_max_j, if front is NEGATIVE, you need to make sure to multiply the prcomp BELOW by -1 to make sure that higher PC1 values mean more aggression, not less
+##########################################################
+
+###script for adding PC1 column of MIS to data table
+assay_subset$MIS1<-(-1)*prcomp(~front + back + attack + attacklatency + approachlatency, data=assay_subset, center=TRUE, scale =TRUE)$x[,1]
+
+
+##########################################################
+#bonus code!
+##########################################################
 #if you are interested in calculating the coefficient of variation (i.e., predictability), here is the code for this:
 CV <- function(x){
         (sd(x)/mean(x))
